@@ -1,0 +1,109 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### 민감한 설정 파일들 ###
+# 로컬 환경 설정 (DB 연결 정보 포함)
+src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
+src/main/resources/application-local.properties
+
+# 민감한 정보 문서
+SENSITIVE_VALUES.md
+
+# 환경변수 파일
+.env
+.env.local
+.env.prod
+.env.*.local
+
+# 비밀키 및 인증서 파일
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+
+# 업로드된 파일들
+uploads/
+upload/
+files/
+
+# 로그 파일
+logs/
+*.log
+ngrok.log
+
+# 임시 파일
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+### Kubernetes 민감한 설정 ###
+# 실제 운영 환경 설정 파일들
+k8s/*-prod.yml
+k8s/*-prod.yaml
+k8s/secrets.yml
+k8s/secrets.yaml
+k8s/*-secret.yml
+k8s/*-secret.yaml
+k8s/product-service-simple.yaml
+k8s/product-service-nks-deployment.yaml
+
+### Docker ###
+# Docker 컨테이너 데이터
+docker-data/
+docker-volumes/
+
+### 개발 중 생성되는 임시 파일들 ###
+# 테스트 파일
+test-*.txt
+test-*.json
+test-*.xml
+*.test
+
+# 백업 파일
+*.bak
+*.backup
+*.orig
+
+### 배포 관련 민감 정보 ###
+# 운영 배포 스크립트 (실제 서버 정보 포함될 수 있음)
+deploy-prod.sh
+deploy-real.sh
+*-prod.sh
