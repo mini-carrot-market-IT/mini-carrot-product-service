@@ -51,6 +51,10 @@ public class Product {
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
     
+    @Column(name = "view_count", nullable = false)
+    @Builder.Default
+    private Long viewCount = 0L;
+    
     // 비즈니스 로직용 생성자
     public Product(String title, String description, BigDecimal price, String category, 
                    String imageUrl, Long sellerId, String sellerNickname) {
@@ -64,6 +68,7 @@ public class Product {
         this.status = ProductStatus.AVAILABLE;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
+        this.viewCount = 0L; // 조회수 초기화 추가
     }
     
     // 비즈니스 메서드들
@@ -94,6 +99,11 @@ public class Product {
     
     public boolean isOwnedBy(Long userId) {
         return this.sellerId.equals(userId);
+    }
+    
+    public void incrementViewCount() {
+        this.viewCount++;
+        this.updatedAt = LocalDateTime.now();
     }
     
     @PreUpdate

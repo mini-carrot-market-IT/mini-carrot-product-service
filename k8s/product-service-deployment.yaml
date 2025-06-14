@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
       - name: product-service
-        image: hwangsk0419/mini-carrot-product-service:v1.8.13-multiarch
+        image: hwangsk0419/mini-carrot-product-service:v1.8.8-multiarch
         ports:
         - containerPort: 8082
         env:
@@ -61,7 +61,7 @@ spec:
         - name: RABBITMQ_PASSWORD
           value: "MiniCarrot2024"
         - name: USER_SERVICE_URL
-          value: "http://user-service.tuk-trainee12.svc.cluster.local:8081"
+          value: "http://user-service.tuk-trainee12.svc.cluster.local:8080"
         - name: JWT_SECRET
           value: "ncp-mini-carrot-super-secure-jwt-secret-key-2024-production-environment"
         - name: JPA_DDL_AUTO

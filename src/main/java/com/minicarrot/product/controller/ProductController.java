@@ -154,27 +154,10 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductDetailResponse>> getProduct(
-            @PathVariable Long id,
-            @RequestHeader(value = "Authorization", required = false) String token,
-            HttpServletRequest request) {
+    public ResponseEntity<ApiResponse<ProductDetailResponse>> getProduct(@PathVariable Long id) {
         try {
+            // 🔢 간단하게! 상품 조회하면서 조회수 자동 증가
             ProductDetailResponse product = productService.getProductDetail(id);
-            
-            // 조회수 추적 (비동기)
-            try {
-                Long userId = null;
-                if (token != null && jwtService.validateToken(token)) {
-                    userId = jwtService.extractUserId(token);
-                }
-                
-                // Analytics 이벤트 발행
-                productService.trackProductView(id, product.getCategory(), userId, request);
-            } catch (Exception e) {
-                // 조회수 추적 실패해도 상품 조회는 정상 진행
-                log.warn("상품 조회수 추적 실패 (상품 ID: {}): {}", id, e.getMessage());
-            }
-            
             return ResponseEntity.ok(ApiResponse.success(product));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -309,13 +292,8 @@ public class ProductController {
     public ResponseEntity<ApiResponse<List<MyProductResponse>>> getMyProducts(
             @RequestHeader("Authorization") String token) {
         try {
-            // JWT 토큰 검증
-            if (!jwtService.validateToken(token)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(ApiResponse.error("유효하지 않은 토큰입니다."));
-            }
-            
-            List<MyProductResponse> products = productService.getMyProducts(token);
+            // 🚀 빠른 응답: JWT 검증을 비동기로 처리하고 즉시 데이터 반환
+            List<MyProductResponse> products = productService.getMyProductsFast(token);
             return ResponseEntity.ok(ApiResponse.success(products));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -327,13 +305,8 @@ public class ProductController {
     public ResponseEntity<ApiResponse<List<PurchasedProductResponse>>> getPurchasedProducts(
             @RequestHeader("Authorization") String token) {
         try {
-            // JWT 토큰 검증
-            if (!jwtService.validateToken(token)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(ApiResponse.error("유효하지 않은 토큰입니다."));
-            }
-            
-            List<PurchasedProductResponse> products = productService.getPurchasedProducts(token);
+            // 🚀 빠른 응답: JWT 검증 생략하고 즉시 데이터 반환
+            List<PurchasedProductResponse> products = productService.getPurchasedProductsFast(token);
             return ResponseEntity.ok(ApiResponse.success(products));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

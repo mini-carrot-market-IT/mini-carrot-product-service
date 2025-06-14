@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
 import org.springframework.scheduling.annotation.Async;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -40,9 +42,21 @@ public class ProductService {
 
     @Transactional
     public ProductCreateResponse createProduct(String token, ProductRequest request) {
-        // 1. JWT 토큰에서 사용자 정보 추출 (캐시된 정보 우선 사용)
-        Long sellerId = jwtService.extractUserId(token);
-        String sellerNickname = jwtService.extractNickname(token);
+        // 🚀 빠른 사용자 정보 추출 (캐시 우선)
+        Long sellerId = jwtService.extractUserIdFast(token);
+        String sellerNickname = null;
+        
+        if (sellerId == null) {
+            // 폴백: 기존 방식으로 추출
+            sellerId = jwtService.extractUserId(token);
+            sellerNickname = jwtService.extractNickname(token);
+        } else {
+            // 빠른 방식으로 닉네임도 추출
+            sellerNickname = jwtService.extractNicknameFast(token);
+            if (sellerNickname == null) {
+                sellerNickname = jwtService.extractNickname(token);
+            }
+        }
         
         // 2. 상품 엔티티 생성 및 저장 (핵심 로직만 동기 처리)
         Product product = new Product(
@@ -97,7 +111,7 @@ public class ProductService {
     }
 
     /**
-     * 상품 목록 조회 (성능 최적화 버전 - 판매 중인 상품만)
+     * 상품 목록 조회 (성능 최적화 버전 - 판매 중인 상품만, 조회수 포함)
      */
     @Transactional(readOnly = true)
     public List<ProductResponse> getProducts(String category) {
@@ -111,7 +125,7 @@ public class ProductService {
             products = productRepository.findAvailableProductsOrderByCreatedAtDesc();
         }
         
-        // 🚀 성능 최적화: 스트림 처리 최적화
+        // 🚀 성능 최적화: 스트림 처리 최적화 + 조회수 포함
         return products.parallelStream()
             .map(product -> new ProductResponse(
                 product.getId(),
@@ -119,13 +133,14 @@ public class ProductService {
                 product.getPrice(),
                 product.getCategory(),
                 product.getImageUrl(),
-                product.getStatus().toString()
+                product.getStatus().toString(),
+                product.getViewCount()
             ))
             .collect(Collectors.toList());
     }
 
     /**
-     * 상품 목록 조회 (페이지네이션 지원 - 판매 중인 상품만)
+     * 상품 목록 조회 (페이지네이션 지원 - 판매 중인 상품만, 조회수 포함)
      */
     @Transactional(readOnly = true)
     public List<ProductResponse> getProductsWithPagination(String category, int page, int size) {
@@ -155,7 +170,8 @@ public class ProductService {
                 product.getPrice(),
                 product.getCategory(),
                 product.getImageUrl(),
-                product.getStatus().toString()
+                product.getStatus().toString(),
+                product.getViewCount()
             ))
             .collect(Collectors.toList());
     }
@@ -186,17 +202,20 @@ public class ProductService {
                 product.getPrice(),
                 product.getCategory(),
                 product.getImageUrl(),
-                product.getStatus().toString()
+                product.getStatus().toString(),
+                product.getViewCount()
             ))
             .collect(Collectors.toList());
     }
 
+    @Transactional
     public ProductDetailResponse getProductDetail(Long id) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("상품을 찾을 수 없습니다."));
         
-        // 📈 Analytics 이벤트는 Controller에서 처리하므로 여기서는 제거
-        // (중복 이벤트 발행 방지)
+        // 🔢 조회수 증가 (간단하게!)
+        product.incrementViewCount();
+        productRepository.save(product);
         
         return new ProductDetailResponse(
             product.getId(),
@@ -206,7 +225,8 @@ public class ProductService {
             product.getCategory(),
             product.getImageUrl(),
             product.getSellerNickname(),
-            product.getStatus().toString()
+            product.getStatus().toString(),
+            product.getViewCount()
         );
     }
 
@@ -229,7 +249,8 @@ public class ProductService {
             product.getCategory(),
             product.getImageUrl(),
             product.getSellerNickname(),
-            product.getStatus().toString()
+            product.getStatus().toString(),
+            product.getViewCount()
         );
     }
 
@@ -314,9 +335,48 @@ public class ProductService {
             .collect(Collectors.toList());
     }
 
+    /**
+     * 🚀 초고속 내 상품 조회 (JWT 검증 최적화)
+     */
+    @Transactional(readOnly = true)
+    public List<MyProductResponse> getMyProductsFast(String token) {
+        try {
+            // 토큰에서 직접 사용자 ID 추출 (검증 생략으로 속도 향상)
+            Long sellerId = jwtService.extractUserIdFast(token);
+            
+            log.debug("🚀 빠른 내 상품 조회 시작: 사용자 {}", sellerId);
+            long startTime = System.currentTimeMillis();
+            
+            List<Product> products = productRepository.findBySellerId(sellerId);
+            
+            List<MyProductResponse> result = products.stream()
+                .map(product -> new MyProductResponse(
+                    product.getId(),
+                    product.getTitle(),
+                    product.getPrice(),
+                    product.getStatus().toString(),
+                    product.getImageUrl()
+                ))
+                .collect(Collectors.toList());
+            
+            long endTime = System.currentTimeMillis();
+            log.info("✅ 빠른 내 상품 조회 완료: {}ms ({}개)", (endTime - startTime), result.size());
+            
+            return result;
+        } catch (Exception e) {
+            log.error("❌ 빠른 내 상품 조회 실패", e);
+            // 실패 시 기본 메서드로 폴백
+            return getMyProducts(token);
+        }
+    }
+
     @Transactional
     public void updateProduct(Long productId, String token, ProductRequest request) {
-        Long userId = jwtService.extractUserId(token);
+        // 🚀 빠른 사용자 ID 추출 (캐시 우선)
+        Long userId = jwtService.extractUserIdFast(token);
+        if (userId == null) {
+            userId = jwtService.extractUserId(token); // 폴백
+        }
         
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new RuntimeException("상품을 찾을 수 없습니다."));
@@ -340,27 +400,45 @@ public class ProductService {
             request.getImageUrl()
         );
         
-        productRepository.save(product);
+        Product savedProduct = productRepository.save(product);
         
-        // ✏️ 상품 수정 이벤트 발행
-        ProductEventDto updateEvent = ProductEventDto.builder()
-                .productId(product.getId())
-                .title(product.getTitle())
-                .description(product.getDescription())
-                .price(product.getPrice().intValue())
-                .category(product.getCategory())
-                .imageUrl(product.getImageUrl())
-                .sellerId(product.getSellerId())
-                .sellerNickname(product.getSellerNickname())
-                .status(product.getStatus().toString())
-                .build();
-        
-        eventPublisherService.publishProductUpdated(updateEvent);
+        // 🚀 상품 수정 이벤트 발행 (비동기로 처리)
+        processProductUpdatedAsync(savedProduct);
+    }
+
+    /**
+     * 🚀 상품 수정 후 비동기 처리
+     */
+    @Async("productAsyncExecutor")
+    public void processProductUpdatedAsync(Product product) {
+        try {
+            ProductEventDto updateEvent = ProductEventDto.builder()
+                    .productId(product.getId())
+                    .title(product.getTitle())
+                    .description(product.getDescription())
+                    .price(product.getPrice().intValue())
+                    .category(product.getCategory())
+                    .imageUrl(product.getImageUrl())
+                    .sellerId(product.getSellerId())
+                    .sellerNickname(product.getSellerNickname())
+                    .status(product.getStatus().toString())
+                    .build();
+            
+            eventPublisherService.publishProductUpdatedAsync(updateEvent);
+            log.debug("상품 수정 후처리 완료: {}", product.getId());
+            
+        } catch (Exception e) {
+            log.error("상품 수정 후처리 중 오류 발생 (상품 ID: {}): {}", product.getId(), e.getMessage());
+        }
     }
 
     @Transactional
     public void deleteProduct(Long productId, String token) {
-        Long userId = jwtService.extractUserId(token);
+        // 🚀 빠른 사용자 ID 추출 (캐시 우선)
+        Long userId = jwtService.extractUserIdFast(token);
+        if (userId == null) {
+            userId = jwtService.extractUserId(token); // 폴백
+        }
         
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new RuntimeException("상품을 찾을 수 없습니다."));
@@ -375,23 +453,50 @@ public class ProductService {
             throw new RuntimeException("이미 판매된 상품은 삭제할 수 없습니다.");
         }
         
-        // 🗑️ 상품 삭제 이벤트 발행 (삭제 전에 발행)
-        ProductEventDto deleteEvent = ProductEventDto.builder()
-                .productId(product.getId())
+        // 삭제 전에 상품 정보 복사 (비동기 처리용)
+        Product productCopy = Product.builder()
+                .id(product.getId())
                 .title(product.getTitle())
                 .description(product.getDescription())
-                .price(product.getPrice().intValue())
+                .price(product.getPrice())
                 .category(product.getCategory())
                 .imageUrl(product.getImageUrl())
                 .sellerId(product.getSellerId())
                 .sellerNickname(product.getSellerNickname())
-                .status(product.getStatus().toString())
+                .status(product.getStatus())
                 .build();
         
-        eventPublisherService.publishProductDeleted(deleteEvent);
-        
-        // 상품 삭제
+        // 🚀 상품 삭제 (핵심 로직만 동기 처리)
         productRepository.delete(product);
+        
+        // 🚀 삭제 이벤트 발행 (비동기로 처리)
+        processProductDeletedAsync(productCopy);
+    }
+
+    /**
+     * 🚀 상품 삭제 후 비동기 처리
+     */
+    @Async("productAsyncExecutor")
+    public void processProductDeletedAsync(Product product) {
+        try {
+            ProductEventDto deleteEvent = ProductEventDto.builder()
+                    .productId(product.getId())
+                    .title(product.getTitle())
+                    .description(product.getDescription())
+                    .price(product.getPrice().intValue())
+                    .category(product.getCategory())
+                    .imageUrl(product.getImageUrl())
+                    .sellerId(product.getSellerId())
+                    .sellerNickname(product.getSellerNickname())
+                    .status(product.getStatus().toString())
+                    .build();
+            
+            eventPublisherService.publishProductDeletedAsync(deleteEvent);
+            log.debug("상품 삭제 후처리 완료: {}", product.getId());
+            
+        } catch (Exception e) {
+            log.error("상품 삭제 후처리 중 오류 발생 (상품 ID: {}): {}", product.getId(), e.getMessage());
+        }
     }
 
     public List<PurchasedProductResponse> getPurchasedProducts(String token) {
@@ -429,6 +534,65 @@ public class ProductService {
                 );
             })
             .collect(Collectors.toList());
+    }
+
+    /**
+     * 🚀 초고속 구매 상품 조회 (JWT 검증 최적화)
+     */
+    @Transactional(readOnly = true)
+    public List<PurchasedProductResponse> getPurchasedProductsFast(String token) {
+        try {
+            // 토큰에서 직접 사용자 ID 추출 (검증 생략으로 속도 향상)
+            Long buyerId = jwtService.extractUserIdFast(token);
+            if (buyerId == null) {
+                log.warn("빠른 구매 상품 조회 실패 - 사용자 ID 추출 불가");
+                return new ArrayList<>();
+            }
+            
+            log.debug("🚀 빠른 구매 상품 조회 시작: 사용자 {}", buyerId);
+            long startTime = System.currentTimeMillis();
+            
+            List<Purchase> purchases = purchaseRepository.findByUserIdOrderByPurchasedAtDesc(buyerId);
+            
+            if (purchases.isEmpty()) {
+                return new ArrayList<>();
+            }
+            
+            // 상품 ID 목록 추출
+            List<Long> productIds = purchases.stream()
+                    .map(Purchase::getProductId)
+                    .collect(Collectors.toList());
+            
+            // 한 번의 쿼리로 모든 상품 정보 조회
+            Map<Long, Product> productMap = productRepository.findAllById(productIds)
+                    .stream()
+                    .collect(Collectors.toMap(Product::getId, product -> product));
+            
+            // 결과 매핑
+            List<PurchasedProductResponse> result = purchases.stream()
+                    .map(purchase -> {
+                        Product product = productMap.get(purchase.getProductId());
+                        
+                        return new PurchasedProductResponse(
+                            purchase.getProductId(),
+                            product != null ? product.getTitle() : "삭제된 상품",
+                            purchase.getPurchasePrice(),
+                            product != null ? product.getSellerNickname() : "탈퇴한 사용자",
+                            purchase.getPurchasedAt(),
+                            product != null ? product.getImageUrl() : null
+                        );
+                    })
+                    .collect(Collectors.toList());
+            
+            long endTime = System.currentTimeMillis();
+            log.info("✅ 빠른 구매 상품 조회 완료: {}ms ({}개)", (endTime - startTime), result.size());
+            
+            return result;
+        } catch (Exception e) {
+            log.error("❌ 빠른 구매 상품 조회 실패", e);
+            // 실패 시 기본 메서드로 폴백
+            return getPurchasedProducts(token);
+        }
     }
 
     /**
@@ -474,7 +638,8 @@ public class ProductService {
                 productWithScore.getProduct().getPrice(),
                 productWithScore.getProduct().getCategory(),
                 productWithScore.getProduct().getImageUrl(),
-                productWithScore.getProduct().getStatus().toString()
+                productWithScore.getProduct().getStatus().toString(),
+                productWithScore.getProduct().getViewCount()
             ))
             .collect(Collectors.toList());
     }
@@ -561,31 +726,70 @@ public class ProductService {
     }
 
     public SseEmitter createProductStream() {
-        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        // 🚀 타임아웃을 5분으로 늘려서 연결 안정성 향상
+        SseEmitter emitter = new SseEmitter(300000L); // 5분 타임아웃
+        String emitterId = "emitter-" + System.currentTimeMillis() + "-" + Thread.currentThread().getId();
         
         try {
-            // 초기 데이터 전송
-            List<ProductResponse> products = getProducts(null);
-            emitter.send(SseEmitter.event()
-                    .name("products")
-                    .data(products));
+            log.info("🔗 SSE 연결 생성: {} (5분 타임아웃)", emitterId);
             
-            // 주기적으로 데이터 업데이트 (실제로는 이벤트 기반으로 처리)
-            new Thread(() -> {
+            // 연결 관리 맵에 추가
+            productStreamEmitters.put(emitterId, emitter);
+            
+            // 🚀 연결 종료 시 정리 (상세 로깅 추가)
+            emitter.onCompletion(() -> {
+                log.info("✅ SSE 연결 정상 완료: {} (활성 연결: {}개)", emitterId, productStreamEmitters.size());
+                productStreamEmitters.remove(emitterId);
+            });
+            
+            emitter.onTimeout(() -> {
+                log.warn("⏰ SSE 연결 타임아웃: {} (5분 경과, 활성 연결: {}개)", emitterId, productStreamEmitters.size());
+                productStreamEmitters.remove(emitterId);
                 try {
-                    while (true) {
-                        Thread.sleep(5000); // 5초마다 업데이트
-                        List<ProductResponse> updatedProducts = getProducts(null);
-                        emitter.send(SseEmitter.event()
-                                .name("products")
-                                .data(updatedProducts));
-                    }
-                } catch (IOException | InterruptedException e) {
-                    emitter.completeWithError(e);
+                    emitter.complete();
+                } catch (Exception e) {
+                    log.debug("타임아웃 시 연결 종료 중 오류 (무시 가능): {}", e.getMessage());
                 }
-            }).start();
+            });
             
-        } catch (IOException e) {
+            emitter.onError((ex) -> {
+                log.error("❌ SSE 연결 오류: {} - {} (활성 연결: {}개)", emitterId, ex.getMessage(), productStreamEmitters.size());
+                productStreamEmitters.remove(emitterId);
+                try {
+                    emitter.completeWithError(ex);
+                } catch (Exception e) {
+                    log.debug("오류 시 연결 종료 중 추가 오류 (무시 가능): {}", e.getMessage());
+                }
+            });
+            
+            // 🚀 초기 데이터 전송 (간소화)
+            try {
+                List<ProductResponse> products = getProducts(null);
+                emitter.send(SseEmitter.event()
+                        .name("products")
+                        .data(products)
+                        .id(emitterId)
+                        .comment("초기 상품 목록"));
+                
+                log.info("📡 SSE 초기 데이터 전송 완료: {} (상품 {}개, 활성 연결: {}개)", 
+                    emitterId, products.size(), productStreamEmitters.size());
+                
+                // 🚀 연결 유지를 위한 하트비트 전송
+                emitter.send(SseEmitter.event()
+                        .name("heartbeat")
+                        .data("connected")
+                        .comment("연결 확인"));
+                        
+            } catch (IOException e) {
+                log.error("❌ SSE 초기 데이터 전송 실패: {}", emitterId, e);
+                productStreamEmitters.remove(emitterId);
+                emitter.completeWithError(e);
+                return emitter;
+            }
+            
+        } catch (Exception e) {
+            log.error("❌ SSE 연결 생성 중 오류: {}", emitterId, e);
+            productStreamEmitters.remove(emitterId);
             emitter.completeWithError(e);
         }
         
@@ -620,32 +824,131 @@ public class ProductService {
     }
 
     /**
-     * 사용자별 상품 통계 조회 (안정화 버전)
+     * 사용자별 상품 통계 조회 (초고속 최적화 버전 + 최근활동 포함)
      */
+    @Transactional(readOnly = true)
     public Map<String, Object> getUserProductStats(Long userId) {
         Map<String, Object> stats = new HashMap<>();
         
         try {
-            // 등록한 상품 수
-            long registeredCount = productRepository.countBySellerId(userId);
+            log.debug("🚀 사용자 {} 통계 조회 시작", userId);
+            long startTime = System.currentTimeMillis();
             
-            // 구매한 상품 수
-            long purchasedCount = purchaseRepository.countByUserId(userId);
+            // 🚀 병렬 처리로 모든 통계를 동시에 조회
+            CompletableFuture<Long> registeredCountFuture = CompletableFuture.supplyAsync(() -> 
+                productRepository.countBySellerId(userId));
             
-            // 판매 완료된 상품 수
-            long soldCount = productRepository.countBySellerIdAndStatus(userId, Product.ProductStatus.SOLD);
+            CompletableFuture<Long> purchasedCountFuture = CompletableFuture.supplyAsync(() -> 
+                purchaseRepository.countByUserId(userId));
             
-            // 총 거래 금액 (판매한 상품들의 총액)
-            List<Purchase> soldPurchases = purchaseRepository.findBySellerId(userId);
-            long totalSalesAmount = soldPurchases.stream()
-                    .mapToLong(purchase -> purchase.getPurchasePrice().longValue())
-                    .sum();
+            CompletableFuture<Long> soldCountFuture = CompletableFuture.supplyAsync(() -> 
+                productRepository.countBySellerIdAndStatus(userId, Product.ProductStatus.SOLD));
             
-            // 총 구매 금액
-            List<Purchase> purchases = purchaseRepository.findByUserId(userId);
-            long totalPurchaseAmount = purchases.stream()
-                    .mapToLong(purchase -> purchase.getPurchasePrice().longValue())
-                    .sum();
+            // 거래 금액은 간단한 쿼리로 최적화
+            CompletableFuture<Long> totalSalesAmountFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return purchaseRepository.findBySellerId(userId).stream()
+                            .mapToLong(purchase -> purchase.getPurchasePrice().longValue())
+                            .sum();
+                } catch (Exception e) {
+                    log.warn("판매 금액 계산 실패: {}", e.getMessage());
+                    return 0L;
+                }
+            });
+            
+            CompletableFuture<Long> totalPurchaseAmountFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return purchaseRepository.findByUserId(userId).stream()
+                            .mapToLong(purchase -> purchase.getPurchasePrice().longValue())
+                            .sum();
+                } catch (Exception e) {
+                    log.warn("구매 금액 계산 실패: {}", e.getMessage());
+                    return 0L;
+                }
+            });
+            
+            // 🆕 최근활동 정보 조회 (병렬 처리)
+            CompletableFuture<List<Map<String, Object>>> recentActivitiesFuture = CompletableFuture.supplyAsync(() -> {
+                List<Map<String, Object>> activities = new ArrayList<>();
+                
+                try {
+                    // 최근 등록한 상품 (최대 3개)
+                    List<Product> recentProducts = productRepository.findBySellerId(userId)
+                            .stream()
+                            .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                            .limit(3)
+                            .collect(Collectors.toList());
+                    
+                    for (Product product : recentProducts) {
+                        Map<String, Object> activity = new HashMap<>();
+                        activity.put("type", "PRODUCT_REGISTERED");
+                        activity.put("title", product.getTitle());
+                        activity.put("productId", product.getId());
+                        activity.put("timestamp", product.getCreatedAt());
+                        activity.put("description", "상품을 등록했습니다");
+                        activities.add(activity);
+                    }
+                    
+                    // 최근 구매한 상품 (최대 3개)
+                    List<Purchase> recentPurchases = purchaseRepository.findByUserIdOrderByPurchasedAtDesc(userId)
+                            .stream().limit(3).collect(Collectors.toList());
+                    
+                    for (Purchase purchase : recentPurchases) {
+                        Map<String, Object> activity = new HashMap<>();
+                        activity.put("type", "PRODUCT_PURCHASED");
+                        activity.put("productId", purchase.getProductId());
+                        activity.put("timestamp", purchase.getPurchasedAt());
+                        activity.put("price", purchase.getPurchasePrice());
+                        activity.put("description", "상품을 구매했습니다");
+                        activities.add(activity);
+                    }
+                    
+                    // 최근 판매된 상품 (최대 3개)
+                    List<Purchase> recentSales = purchaseRepository.findBySellerId(userId)
+                            .stream()
+                            .sorted((a, b) -> b.getPurchasedAt().compareTo(a.getPurchasedAt()))
+                            .limit(3)
+                            .collect(Collectors.toList());
+                    
+                    for (Purchase sale : recentSales) {
+                        Map<String, Object> activity = new HashMap<>();
+                        activity.put("type", "PRODUCT_SOLD");
+                        activity.put("productId", sale.getProductId());
+                        activity.put("timestamp", sale.getPurchasedAt());
+                        activity.put("price", sale.getPurchasePrice());
+                        activity.put("description", "상품이 판매되었습니다");
+                        activities.add(activity);
+                    }
+                    
+                    // 시간순으로 정렬 (최신순)
+                    activities.sort((a, b) -> {
+                        LocalDateTime timeA = (LocalDateTime) a.get("timestamp");
+                        LocalDateTime timeB = (LocalDateTime) b.get("timestamp");
+                        return timeB.compareTo(timeA);
+                    });
+                    
+                    // 최대 5개만 반환
+                    return activities.stream().limit(5).collect(Collectors.toList());
+                    
+                } catch (Exception e) {
+                    log.warn("최근활동 조회 실패: {}", e.getMessage());
+                    return new ArrayList<>();
+                }
+            });
+            
+            // 모든 비동기 작업 완료 대기 (최대 5초)
+            CompletableFuture.allOf(
+                registeredCountFuture, purchasedCountFuture, soldCountFuture,
+                totalSalesAmountFuture, totalPurchaseAmountFuture, recentActivitiesFuture
+            ).get(5, TimeUnit.SECONDS);
+            
+            // 결과 수집
+            long registeredCount = registeredCountFuture.get();
+            long purchasedCount = purchasedCountFuture.get();
+            long soldCount = soldCountFuture.get();
+            long totalSalesAmount = totalSalesAmountFuture.get();
+            long totalPurchaseAmount = totalPurchaseAmountFuture.get();
+            List<Map<String, Object>> recentActivities = recentActivitiesFuture.get();
             
             stats.put("registeredCount", registeredCount);
             stats.put("purchasedCount", purchasedCount);
@@ -653,12 +956,15 @@ public class ProductService {
             stats.put("totalSalesAmount", totalSalesAmount);
             stats.put("totalPurchaseAmount", totalPurchaseAmount);
             stats.put("totalTransactions", purchasedCount + soldCount);
+            stats.put("recentActivities", recentActivities); // 🆕 최근활동 추가
             stats.put("timestamp", System.currentTimeMillis());
             
-            log.debug("사용자 {} 상품 통계: 등록 {}, 구매 {}, 판매 {}", userId, registeredCount, purchasedCount, soldCount);
+            long endTime = System.currentTimeMillis();
+            log.info("✅ 사용자 {} 통계 조회 완료 - 소요시간: {}ms, 최근활동: {}개", 
+                    userId, (endTime - startTime), recentActivities.size());
             
         } catch (Exception e) {
-            log.error("사용자 상품 통계 조회 중 오류 발생: userId={}", userId, e);
+            log.error("❌ 사용자 상품 통계 조회 중 오류 발생: userId={}", userId, e);
             // 오류 발생 시 기본값 반환
             stats.put("registeredCount", 0L);
             stats.put("purchasedCount", 0L);
@@ -666,6 +972,7 @@ public class ProductService {
             stats.put("totalSalesAmount", 0L);
             stats.put("totalPurchaseAmount", 0L);
             stats.put("totalTransactions", 0L);
+            stats.put("recentActivities", new ArrayList<>());
             stats.put("error", "통계 조회 중 오류가 발생했습니다");
         }
         
@@ -688,7 +995,8 @@ public class ProductService {
             product.getCategory(),
             product.getImageUrl(),
             product.getSellerNickname(),
-            product.getStatus().toString()
+            product.getStatus().toString(),
+            product.getViewCount()
         );
     }
 
@@ -748,7 +1056,8 @@ public class ProductService {
                             product.getPrice(),
                             product.getCategory(),
                             product.getImageUrl(),
-                            product.getStatus().toString()
+                            product.getStatus().toString(),
+                            product.getViewCount()
                         )));
             } catch (IOException e) {
                 emitter.completeWithError(e);

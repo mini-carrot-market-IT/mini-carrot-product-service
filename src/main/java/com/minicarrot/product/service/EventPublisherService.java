@@ -92,6 +92,18 @@ public class EventPublisherService {
         }
     }
 
+    /**
+     * 비동기 상품 삭제 이벤트 발행 (Spring @Async 사용)
+     */
+    @Async("eventAsyncExecutor")
+    public void publishProductDeletedAsync(ProductEventDto productEvent) {
+        try {
+            publishProductDeleted(productEvent);
+        } catch (Exception e) {
+            log.error("비동기 상품 삭제 이벤트 발행 실패: {}", productEvent.getProductId(), e);
+        }
+    }
+
     public void publishProductDeleted(ProductEventDto productEvent) {
         try {
             productEvent.setEventType("DELETED");

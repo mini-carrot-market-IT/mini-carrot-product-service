@@ -15,4 +15,5 @@ public class ProductResponse {
     private String category;
     private String imageUrl;
     private String status;
+    private Long viewCount;
 } 

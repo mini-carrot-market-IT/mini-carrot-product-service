@@ -17,4 +17,5 @@ public class ProductDetailResponse {
     private String imageUrl;
     private String sellerNickname;
     private String status;
+    private Long viewCount;
 } 

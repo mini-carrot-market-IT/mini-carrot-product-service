@@ -313,6 +313,7 @@ public class AnalyticsController {
             @RequestBody SearchTrackingRequest request,
             HttpServletRequest httpRequest) {
         
+        log.info("검색 추적 요청 받음: keyword={}, category={}", request.getKeyword(), request.getCategory());
         try {
             AnalyticsEventDto analytics = AnalyticsEventDto.builder()
                     .eventType("SEARCH")
@@ -327,6 +328,10 @@ public class AnalyticsController {
 
             // 비동기로 검색 분석 이벤트 발행
             eventPublisherService.publishSearchAnalytics(analytics);
+            
+            // 즉시 검색 통계 증가 (동기적으로 처리)
+            analyticsService.saveSearchAnalytics(analytics);
+            log.info("검색 추적 완료: keyword={}", request.getKeyword());
             
             return ResponseEntity.ok("Search tracked successfully");
         } catch (Exception e) {
@@ -448,11 +453,12 @@ public class AnalyticsController {
     }
 
     /**
-     * 실시간 통계 대시보드 API
+     * 🚀 실시간 통계 대시보드 API (초고속 병렬 처리)
      */
     @GetMapping("/dashboard")
     public ResponseEntity<Map<String, Object>> getDashboardStats() {
         try {
+            // 대시보드 통계 조회
             Map<String, Object> response = analyticsService.getDashboardStats();
             return ResponseEntity.ok()
                     .header("Content-Type", "application/json;charset=UTF-8")
@@ -464,7 +470,6 @@ public class AnalyticsController {
             errorResponse.put("error", "Failed to get dashboard stats");
             errorResponse.put("totalProducts", 0);
             errorResponse.put("totalViews", 0);
-            errorResponse.put("totalSearches", 0);
             return ResponseEntity.internalServerError()
                     .header("Content-Type", "application/json;charset=UTF-8")
                     .body(errorResponse);

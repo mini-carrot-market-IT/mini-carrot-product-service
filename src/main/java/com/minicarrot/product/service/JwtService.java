@@ -74,6 +74,66 @@ public class JwtService {
         // 2차: User Service에서 사용자 정보 조회 (fallback)
         return extractUserIdFromUserService(token);
     }
+
+    /**
+     * 🚀 초고속 사용자 ID 추출 (User Service 호출 생략)
+     */
+    public Long extractUserIdFast(String token) {
+        try {
+            // 캐시 우선 확인
+            String tokenKey = getTokenKey(token);
+            UserCacheEntry cached = userCache.get(tokenKey);
+            if (cached != null && !cached.isExpired() && cached.userId != null) {
+                return cached.userId;
+            }
+            
+            // 로컬 JWT에서만 추출 (User Service 호출 생략으로 속도 향상)
+            Long userIdFromLocal = extractUserIdLocally(token);
+            if (userIdFromLocal != null) {
+                // 캐시에 저장
+                cacheUserInfo(tokenKey, userIdFromLocal, null, null);
+                return userIdFromLocal;
+            }
+            
+            // 실패 시 기본값 반환 (User Service 호출 안함)
+            log.warn("빠른 사용자 ID 추출 실패 - 토큰에서 추출 불가");
+            return null;
+            
+        } catch (Exception e) {
+            log.error("빠른 사용자 ID 추출 중 오류: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 🚀 초고속 닉네임 추출 (캐시 우선, User Service 호출 생략)
+     */
+    public String extractNicknameFast(String token) {
+        try {
+            // 캐시 우선 확인
+            String tokenKey = getTokenKey(token);
+            UserCacheEntry cached = userCache.get(tokenKey);
+            if (cached != null && !cached.isExpired() && cached.nickname != null) {
+                return cached.nickname;
+            }
+            
+            // 로컬 JWT에서만 추출 (User Service 호출 생략으로 속도 향상)
+            String nicknameFromLocal = extractNicknameLocally(token);
+            if (nicknameFromLocal != null && !nicknameFromLocal.equals("알 수 없는 사용자")) {
+                // 캐시에 저장
+                cacheUserInfo(tokenKey, null, nicknameFromLocal, null);
+                return nicknameFromLocal;
+            }
+            
+            // 실패 시 기본값 반환 (User Service 호출 안함)
+            log.warn("빠른 닉네임 추출 실패 - 토큰에서 추출 불가");
+            return null;
+            
+        } catch (Exception e) {
+            log.error("빠른 닉네임 추출 중 오류: {}", e.getMessage());
+            return null;
+        }
+    }
     
     /**
      * User Service에서 사용자 ID 조회

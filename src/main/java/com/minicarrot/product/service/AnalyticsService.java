@@ -50,7 +50,7 @@ public class AnalyticsService {
     }
 
     public void saveSearchAnalytics(AnalyticsEventDto analytics) {
-        log.debug("Saving search analytics for keyword: {}", analytics.getSearchKeyword());
+        log.info("Saving search analytics for keyword: {}", analytics.getSearchKeyword());
         
         try {
             // 검색 키워드 통계 업데이트
@@ -171,7 +171,8 @@ public class AnalyticsService {
                     product.getPrice(),
                     product.getCategory(),
                     product.getImageUrl(),
-                    product.getStatus().toString()
+                    product.getStatus().toString(),
+                    product.getViewCount() != null ? product.getViewCount() : 0L
                 ))
                 .collect(Collectors.toList());
             
