@@ -1,0 +1,138 @@
+---
+# PersistentVolumeClaim for uploads
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: product-uploads-pvc
+  namespace: tuk-trainee12
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: nks-block-storage
+
+---
+# Product Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: tuk-trainee12
+  labels:
+    app: product-service
+    component: backend
+    version: v1.5.4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+      - name: product-service
+        image: hwangsk0419/mini-carrot-product-service:v1.8.6-multiarch
+        ports:
+        - containerPort: 8082
+        env:
+        - name: DB_URL
+          value: "jdbc:mysql://mysql-service.tuk-trainee12.svc.cluster.local:3306/minicarrot?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: RABBITMQ_HOST
+          value: "rabbitmq-service.tuk-trainee12.svc.cluster.local"
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_USERNAME
+          value: "admin"
+        - name: RABBITMQ_PASSWORD
+          value: "MiniCarrot2024"
+        - name: USER_SERVICE_URL
+          value: "http://user-service.tuk-trainee12.svc.cluster.local:8081"
+        - name: JWT_SECRET
+          value: "ncp-mini-carrot-super-secure-jwt-secret-key-2024-production-environment"
+        - name: JPA_DDL_AUTO
+          value: "none"
+        - name: JPA_SHOW_SQL
+          value: "false"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: SQL_LOG_LEVEL
+          value: "WARN"
+        - name: SPRING_PROFILES_ACTIVE
+          value: "ncp"
+        # Lazy loading 관련 환경변수
+        - name: SPRING_MAIN_LAZY_INITIALIZATION
+          value: "true"
+        - name: SPRING_JPA_DEFER_DATASOURCE_INITIALIZATION
+          value: "true"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 60  # 초기 지연 시간 증가
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5      # 실패 허용 횟수 증가
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 30  # 준비 상태 확인 지연
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30     # 시작 시간 충분히 확보
+        volumeMounts:
+        - name: uploads-volume
+          mountPath: /app/uploads
+      volumes:
+      - name: uploads-volume
+        persistentVolumeClaim:
+          claimName: product-uploads-pvc
+
+---
+# Product Service Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: tuk-trainee12
+  labels:
+    app: product-service
+spec:
+  selector:
+    app: product-service
+  ports:
+  - protocol: TCP
+    port: 8082
+    targetPort: 8082
+    nodePort: 31251
+  type: NodePort 
