@@ -117,17 +117,19 @@ public class EventConsumerService {
 
     @RabbitListener(queues = "analytics.view.queue")
     public void handleViewAnalytics(AnalyticsEventDto analytics) {
-        log.debug("Processing view analytics: {}", analytics.getProductId());
+        log.info("📊 Analytics 이벤트 수신 - 상품 ID: {}, 이벤트 타입: {}", analytics.getProductId(), analytics.getEventType());
         
         try {
             // 분석 데이터 저장
             analyticsService.saveViewAnalytics(analytics);
+            log.info("💾 Analytics 데이터 저장 완료 - 상품 ID: {}", analytics.getProductId());
             
             // 실시간 통계 업데이트
             analyticsService.updateRealTimeStats(analytics);
+            log.info("📈 실시간 통계 업데이트 완료 - 상품 ID: {}", analytics.getProductId());
             
         } catch (Exception e) {
-            log.error("Failed to process view analytics: {}", analytics.getProductId(), e);
+            log.error("❌ Analytics 이벤트 처리 실패 - 상품 ID: {}", analytics.getProductId(), e);
         }
     }
 

@@ -195,16 +195,8 @@ public class ProductService {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("상품을 찾을 수 없습니다."));
         
-        // 📈 상품 조회 분석 이벤트 발행
-        AnalyticsEventDto viewAnalytics = AnalyticsEventDto.builder()
-                .eventType("VIEW")
-                .productId(product.getId())
-                .productTitle(product.getTitle())
-                .productCategory(product.getCategory())
-                .productPrice(product.getPrice().intValue())
-                .build();
-        
-        eventPublisherService.publishViewAnalytics(viewAnalytics);
+        // 📈 Analytics 이벤트는 Controller에서 처리하므로 여기서는 제거
+        // (중복 이벤트 발행 방지)
         
         return new ProductDetailResponse(
             product.getId(),
@@ -605,6 +597,8 @@ public class ProductService {
      */
     public void trackProductView(Long productId, String category, Long userId, HttpServletRequest request) {
         try {
+            log.info("🔍 상품 조회수 추적 시작 - 상품 ID: {}, 카테고리: {}, 사용자 ID: {}", productId, category, userId);
+            
             AnalyticsEventDto analytics = AnalyticsEventDto.builder()
                     .eventType("VIEW")
                     .productId(productId)
@@ -619,8 +613,9 @@ public class ProductService {
 
             // 비동기로 분석 이벤트 발행
             eventPublisherService.publishViewAnalytics(analytics);
+            log.info("✅ Analytics 이벤트 발행 완료 - 상품 ID: {}", productId);
         } catch (Exception e) {
-            log.error("상품 조회수 추적 중 오류 발생", e);
+            log.error("❌ 상품 조회수 추적 중 오류 발생 - 상품 ID: {}", productId, e);
         }
     }
 
