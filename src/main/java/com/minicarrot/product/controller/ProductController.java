@@ -50,10 +50,52 @@ public class ProductController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getProducts(
-            @RequestParam(required = false) String category) {
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size) {
         try {
-            List<ProductResponse> products = productService.getProducts(category);
+            List<ProductResponse> products;
+            
+            // 페이지네이션이 요청된 경우
+            if (page > 0 || size != 20) {
+                products = productService.getProductsWithPagination(category, page, size);
+            } else {
+                products = productService.getProducts(category);
+            }
+            
             return ResponseEntity.ok(ApiResponse.success(products));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("상품 목록 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 상품 목록 조회 (페이지네이션 전용)
+     */
+    @GetMapping("/page")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getProductsWithPagination(
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            List<ProductResponse> products = productService.getProductsWithPagination(category, page, size);
+            
+            // 전체 상품 수 계산
+            List<ProductResponse> allProducts = productService.getProducts(category);
+            int totalElements = allProducts.size();
+            int totalPages = (int) Math.ceil((double) totalElements / size);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("content", products);
+            response.put("page", page);
+            response.put("size", size);
+            response.put("totalElements", totalElements);
+            response.put("totalPages", totalPages);
+            response.put("first", page == 0);
+            response.put("last", page >= totalPages - 1);
+            
+            return ResponseEntity.ok(ApiResponse.success(response));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("상품 목록 조회 중 오류가 발생했습니다: " + e.getMessage()));

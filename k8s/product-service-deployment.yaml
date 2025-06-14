@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
       - name: product-service
-        image: hwangsk0419/mini-carrot-product-service:v1.8.8-multiarch
+        image: hwangsk0419/mini-carrot-product-service:v1.8.9-multiarch
         ports:
         - containerPort: 8082
         env:

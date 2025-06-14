@@ -96,16 +96,59 @@ public class ProductService {
         }
     }
 
+    /**
+     * 상품 목록 조회 (성능 최적화 버전 - 판매 중인 상품만)
+     */
+    @Transactional(readOnly = true)
     public List<ProductResponse> getProducts(String category) {
         List<Product> products;
         
         if (category != null && !category.isEmpty()) {
-            products = productRepository.findByCategoryOrderByCreatedAtDesc(category);
+            // 🚀 성능 최적화: 판매 중인 상품만 조회
+            products = productRepository.findAvailableProductsByCategoryOrderByCreatedAtDesc(category);
         } else {
-            products = productRepository.findAllByOrderByCreatedAtDesc();
+            // 🚀 성능 최적화: 판매 중인 상품만 조회
+            products = productRepository.findAvailableProductsOrderByCreatedAtDesc();
         }
         
-        return products.stream()
+        // 🚀 성능 최적화: 스트림 처리 최적화
+        return products.parallelStream()
+            .map(product -> new ProductResponse(
+                product.getId(),
+                product.getTitle(),
+                product.getPrice(),
+                product.getCategory(),
+                product.getImageUrl(),
+                product.getStatus().toString()
+            ))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * 상품 목록 조회 (페이지네이션 지원 - 판매 중인 상품만)
+     */
+    @Transactional(readOnly = true)
+    public List<ProductResponse> getProductsWithPagination(String category, int page, int size) {
+        List<Product> products;
+        
+        if (category != null && !category.isEmpty()) {
+            // 🚀 성능 최적화: 판매 중인 상품만 조회
+            products = productRepository.findAvailableProductsByCategoryOrderByCreatedAtDesc(category);
+        } else {
+            // 🚀 성능 최적화: 판매 중인 상품만 조회
+            products = productRepository.findAvailableProductsOrderByCreatedAtDesc();
+        }
+        
+        // 페이지네이션 적용
+        int start = page * size;
+        int end = Math.min(start + size, products.size());
+        
+        if (start >= products.size()) {
+            return new ArrayList<>();
+        }
+        
+        return products.subList(start, end)
+            .parallelStream()
             .map(product -> new ProductResponse(
                 product.getId(),
                 product.getTitle(),

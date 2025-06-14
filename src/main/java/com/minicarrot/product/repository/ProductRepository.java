@@ -51,4 +51,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // 🚀 성능 최적화: 판매자별 상품 통계를 한 번의 쿼리로 조회
     @Query("SELECT p.status, COUNT(p) FROM Product p WHERE p.sellerId = :sellerId GROUP BY p.status")
     List<Object[]> countBySellerIdGroupedByStatus(@Param("sellerId") Long sellerId);
+    
+    // 🚀 성능 최적화: 상품 목록 조회 (판매 중인 상품만)
+    @Query("SELECT p FROM Product p WHERE p.status = 'AVAILABLE' ORDER BY p.createdAt DESC")
+    List<Product> findAvailableProductsOrderByCreatedAtDesc();
+    
+    // 🚀 성능 최적화: 카테고리별 판매 중인 상품 조회
+    @Query("SELECT p FROM Product p WHERE p.category = :category AND p.status = 'AVAILABLE' ORDER BY p.createdAt DESC")
+    List<Product> findAvailableProductsByCategoryOrderByCreatedAtDesc(@Param("category") String category);
 } 
