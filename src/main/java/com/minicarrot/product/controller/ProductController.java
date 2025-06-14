@@ -7,8 +7,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.Map;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/products")
@@ -18,6 +27,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final JwtService jwtService;
+    private static final Logger log = LoggerFactory.getLogger(ProductController.class);
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProductCreateResponse>> createProduct(
@@ -50,10 +60,79 @@ public class ProductController {
         }
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String category) {
+        try {
+            // 한글 URL 디코딩 처리
+            if (query != null && !query.trim().isEmpty()) {
+                try {
+                    // 이미 디코딩된 경우와 인코딩된 경우 모두 처리
+                    if (query.contains("%")) {
+                        query = URLDecoder.decode(query, StandardCharsets.UTF_8);
+                    }
+                } catch (Exception e) {
+                    // 디코딩 실패 시 원본 사용
+                    // query는 그대로 사용
+                }
+            }
+            
+            // query가 null이거나 빈 문자열일 때는 전체 상품 조회
+            if (query == null || query.trim().isEmpty()) {
+                List<ProductResponse> products = productService.getProducts(category);
+                return ResponseEntity.ok(ApiResponse.success(products));
+            }
+            
+            List<ProductResponse> products = productService.searchProducts(query, category);
+            return ResponseEntity.ok(ApiResponse.success(products));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("상품 검색 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 상품별 조회수 조회 - 반드시 /{id} 매핑보다 앞에 위치해야 함
+     */
+    @GetMapping("/{id}/views")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getProductViews(@PathVariable Long id) {
+        try {
+            // Analytics Service를 통해 조회수 조회 (향후 구현)
+            Map<String, Object> viewData = new HashMap<>();
+            viewData.put("productId", id);
+            viewData.put("viewCount", 0); // 임시값, 실제로는 Analytics Service에서 조회
+            viewData.put("message", "조회수 기능이 구현되었습니다. Analytics Service 연동 후 실제 데이터가 표시됩니다.");
+            
+            return ResponseEntity.ok(ApiResponse.success(viewData));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("조회수 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductDetailResponse>> getProduct(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<ProductDetailResponse>> getProduct(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest request) {
         try {
             ProductDetailResponse product = productService.getProductDetail(id);
+            
+            // 조회수 추적 (비동기)
+            try {
+                Long userId = null;
+                if (token != null && jwtService.validateToken(token)) {
+                    userId = jwtService.extractUserId(token);
+                }
+                
+                // Analytics 이벤트 발행
+                productService.trackProductView(id, product.getCategory(), userId, request);
+            } catch (Exception e) {
+                // 조회수 추적 실패해도 상품 조회는 정상 진행
+                log.warn("상품 조회수 추적 실패 (상품 ID: {}): {}", id, e.getMessage());
+            }
+            
             return ResponseEntity.ok(ApiResponse.success(product));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -218,5 +297,81 @@ public class ProductController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("구매한 상품 목록 조회 중 오류가 발생했습니다: " + e.getMessage()));
         }
+    }
+
+    @GetMapping("/popular")
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getPopularProducts(
+            @RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<ProductResponse> products = productService.getPopularProducts(limit);
+            return ResponseEntity.ok(ApiResponse.success(products));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("인기 상품 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDashboard() {
+        try {
+            Map<String, Object> dashboardData = productService.getDashboardData();
+            return ResponseEntity.ok(ApiResponse.success(dashboardData));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("대시보드 데이터 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 사용자별 상품 통계 조회 (User Service 연동용)
+     */
+    @GetMapping("/stats/{userId}")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserProductStats(@PathVariable Long userId) {
+        try {
+            Map<String, Object> stats = productService.getUserProductStats(userId);
+            return ResponseEntity.ok(ApiResponse.success(stats));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("사용자 상품 통계 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 상품 상세 조회 (성능 최적화 버전)
+     */
+    @GetMapping("/{id}/fast")
+    public ResponseEntity<ApiResponse<ProductDetailResponse>> getProductFast(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String token) {
+        try {
+            ProductDetailResponse product = productService.getProductDetailFast(id);
+            
+            // 조회수 추적은 비동기로 처리 (성능 영향 최소화)
+            if (token != null) {
+                productService.trackProductViewAsync(id, product.getCategory(), token);
+            }
+            
+            return ResponseEntity.ok(ApiResponse.success(product));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("상품 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
+}
+
+@RestController
+@RequestMapping("/api/stream")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+@RequiredArgsConstructor
+class StreamController {
+
+    private final ProductService productService;
+
+    @GetMapping(value = "/products", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamProducts() {
+        return productService.createProductStream();
     }
 } 

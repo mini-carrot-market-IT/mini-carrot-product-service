@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # MySQL 데이터베이스
+  mysql:
+    image: mysql:8.0
+    container_name: mini-carrot-mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: minicarrot123
+      MYSQL_DATABASE: mini_carrot_product
+      MYSQL_USER: carrot_user
+      MYSQL_PASSWORD: carrot_pass
+      MYSQL_ROOT_HOST: '%'
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+    networks:
+      - minicarrot-network
+
+  # phpMyAdmin (DB 관리 도구)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: mini-carrot-phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: minicarrot123
+      MYSQL_ROOT_PASSWORD: minicarrot123
+    depends_on:
+      - mysql
+    networks:
+      - minicarrot-network
+
+  # Redis (캐싱)
+  redis:
+    image: redis:7.2-alpine
+    container_name: mini-carrot-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass minicarrot123
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      timeout: 10s
+      retries: 5
+    networks:
+      - minicarrot-network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: mini-carrot-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: minicarrot123
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - minicarrot-network
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+
+networks:
+  minicarrot-network:
+    driver: bridge 

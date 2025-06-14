@@ -1,0 +1,91 @@
+---
+# MySQL Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: tuk-trainee12
+data:
+  my.cnf: |
+    [mysqld]
+    default_authentication_plugin=mysql_native_password
+    bind-address=0.0.0.0
+    max_connections=200
+    innodb_buffer_pool_size=128M
+    skip-host-cache
+    skip-name-resolve
+    
+    # UTF-8 인코딩 설정
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+    init-connect='SET NAMES utf8mb4'
+    skip-character-set-client-handshake
+    
+    [mysql]
+    default-character-set=utf8mb4
+    
+    [mysqldump]
+    default-character-set=utf8mb4
+    
+    [client]
+    default-character-set=utf8mb4
+
+---
+# MySQL Init Script ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-script
+  namespace: tuk-trainee12
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS minicarrot;
+    CREATE USER IF NOT EXISTS 'minicarrot'@'%' IDENTIFIED BY 'MiniCarrot2024';
+    GRANT ALL PRIVILEGES ON minicarrot.* TO 'minicarrot'@'%';
+    FLUSH PRIVILEGES;
+    
+    USE minicarrot;
+    
+    -- 사용자 테이블
+    CREATE TABLE IF NOT EXISTS users (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        username VARCHAR(100) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(200),
+        phone_number VARCHAR(20),
+        address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        status ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED') DEFAULT 'ACTIVE'
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    
+    -- 상품 테이블 (carrot_products로 생성)
+    CREATE TABLE IF NOT EXISTS carrot_products (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10,2) NOT NULL,
+        stock_quantity INT DEFAULT 0,
+        category VARCHAR(100),
+        seller_id BIGINT,
+        image_url VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        status ENUM('ACTIVE', 'INACTIVE', 'SOLD_OUT') DEFAULT 'ACTIVE',
+        INDEX idx_seller_id (seller_id),
+        INDEX idx_category (category),
+        INDEX idx_status (status)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    
+    -- 한글 상품 데이터 삽입 (이미지와 매칭)
+    INSERT IGNORE INTO carrot_products (name, description, price, stock_quantity, category, seller_id, image_url) VALUES
+    ('아이폰 13', '애플 아이폰 13 128GB 블루색, 상태 매우 좋음', 650000.00, 1, '전자제품', 1, 'iphone-7479302_1280.jpg'),
+    ('에어팟 프로', '애플 에어팟 프로 2세대, 노이즈 캔슬링 기능', 280000.00, 1, '전자제품', 2, 'earphones-5064411_1280.jpg'),
+    ('맥북 에어 M2', '애플 맥북 에어 M2 13인치 256GB 실버', 1150000.00, 1, '전자제품', 3, 'computer-4795762_1280.jpg'),
+    ('뉴에라 스냅백 모자', 'MLB 뉴욕 양키스 스냅백 모자, 새 제품', 45000.00, 1, '패션잡화', 4, 'cap-1379590_1280.jpg'),
+    ('프라다 지갑', '프라다 사피아노 레더 지갑, 블랙 컬러', 195000.00, 1, '패션잡화', 5, '지갑-14-7565225_1280.jpg'),
+    ('덤벨 세트', '조절 가능한 덤벨 세트 20kg, 홈트레이닝용', 85000.00, 1, '스포츠용품', 6, 'fitness-equipment-2187127_1280.jpg'),
+    ('아기 옷', '신생아용 바디슈트 5벌 세트, 순면 100%', 25000.00, 1, '유아용품', 7, 'baby-clothes-5749670_1280.jpg'),
+    ('CJ 햇반', 'CJ 햇반 즉석밥 210g 24개입, 신선한 쌀밥', 18000.00, 1, '식품', 8, '햇반.webp'),
+    ('나이키 에어포스', '나이키 에어포스 1 화이트 스니커즈 280mm', 125000.00, 1, '신발', 9, 'white-845071_1280.jpg'); 

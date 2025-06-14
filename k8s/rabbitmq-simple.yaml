@@ -1,0 +1,88 @@
+---
+# RabbitMQ Simple Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: tuk-trainee12
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.12-management
+        ports:
+        - containerPort: 5672
+          name: amqp
+        - containerPort: 15672
+          name: management
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          value: "admin"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "MiniCarrot2024"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: rabbitmq-data
+          mountPath: /var/lib/rabbitmq
+      volumes:
+      - name: rabbitmq-data
+        emptyDir: {}
+
+---
+# RabbitMQ Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+  namespace: tuk-trainee12
+  labels:
+    app: rabbitmq
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5672
+    targetPort: 5672
+    protocol: TCP
+    name: amqp
+  - port: 15672
+    targetPort: 15672
+    protocol: TCP
+    name: management
+  selector:
+    app: rabbitmq
+
+---
+# RabbitMQ Management NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-management
+  namespace: tuk-trainee12
+  labels:
+    app: rabbitmq
+spec:
+  type: NodePort
+  ports:
+  - port: 15672
+    targetPort: 15672
+    nodePort: 31215
+    protocol: TCP
+    name: management
+  selector:
+    app: rabbitmq 

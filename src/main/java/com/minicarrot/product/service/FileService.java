@@ -15,7 +15,7 @@ import java.util.UUID;
 @Service
 public class FileService {
 
-    private final String uploadDir = "uploads/";
+    private final String uploadDir = "/app/uploads/";
 
     public String uploadFile(MultipartFile file) throws IOException {
         log.info("파일 업로드 시작: {}", file.getOriginalFilename());

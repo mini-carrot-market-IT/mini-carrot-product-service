@@ -1,0 +1,90 @@
+# NCP Kubernetes 배포용 설정
+spring:
+  datasource:
+    url: jdbc:mysql://mysql-service.tuk-trainee12.svc.cluster.local:3306/minicarrot?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useUnicode=true&connectionCollation=utf8mb4_unicode_ci
+    username: minicarrot
+    password: MiniCarrot2024
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      validation-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: false
+        use_sql_comments: false
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+  
+  # RabbitMQ NCP 설정
+  rabbitmq:
+    host: rabbitmq-service.tuk-trainee12.svc.cluster.local
+    port: 5672
+    username: admin
+    password: MiniCarrot2024
+    virtual-host: /
+    connection-timeout: 10000
+    listener:
+      simple:
+        acknowledge-mode: auto
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000
+        prefetch: 10
+        concurrency: 2
+        max-concurrency: 10
+
+# JWT 설정 (환경변수에서 읽어옴)
+jwt:
+  secret: ${JWT_SECRET:minicarrotncp2024secretkeyforjwttokenverylong123456789012345}
+  expiration: 86400000
+
+# 로깅 설정 (운영 환경)
+logging:
+  level:
+    root: INFO
+    com.minicarrot.product: INFO
+    org.springframework.amqp: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# 운영 환경 설정
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# 서버 설정
+server:
+  port: 8082
+  compression:
+    enabled: true
+  http2:
+    enabled: true
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true 

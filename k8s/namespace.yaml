@@ -1,0 +1,9 @@
+---
+# Namespace 생성
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minicarrot
+  labels:
+    name: minicarrot
+    project: mini-carrot-product-service 
