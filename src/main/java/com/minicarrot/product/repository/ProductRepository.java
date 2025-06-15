@@ -59,4 +59,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // 🚀 성능 최적화: 카테고리별 판매 중인 상품 조회
     @Query("SELECT p FROM Product p WHERE p.category = :category AND p.status = 'AVAILABLE' ORDER BY p.createdAt DESC")
     List<Product> findAvailableProductsByCategoryOrderByCreatedAtDesc(@Param("category") String category);
+    
+    // 🚀 성능 최적화: 조회수 순으로 정렬된 상품 조회
+    @Query("SELECT p FROM Product p WHERE p.status = 'AVAILABLE' ORDER BY p.viewCount DESC")
+    List<Product> findAvailableProductsOrderByViewCountDesc();
 } 

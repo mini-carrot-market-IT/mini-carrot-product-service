@@ -606,40 +606,37 @@ public class ProductService {
     }
 
     public List<ProductResponse> getPopularProducts(int limit) {
-        // 실제 인기도 기반 정렬: 구매 횟수 + 조회수 + 최신도 (가중치 적용)
-        List<Product> allProducts = productRepository.findAll();
+        // 조회수 순으로 정렬
+        List<Product> products = productRepository.findAvailableProductsOrderByViewCountDesc();
         
-        return allProducts.stream()
-            .filter(product -> product.getStatus() == Product.ProductStatus.AVAILABLE) // 판매 중인 상품만
-            .map(product -> {
-                // 구매 횟수 계산
-                long purchaseCount = purchaseRepository.findByProductId(product.getId()).size();
-                
-                // 조회수 계산 (Analytics Service 연동 준비)
-                long viewCount = getProductViewCount(product.getId());
-                
-                // 최신도 점수 (최근 30일 내 상품에 보너스)
-                long daysSinceCreated = java.time.Duration.between(product.getCreatedAt(), java.time.LocalDateTime.now()).toDays();
-                long recencyScore = Math.max(0, 30 - daysSinceCreated);
-                
-                // 인기도 점수 계산
-                // - 구매 1회 = 50점 (가장 중요)
-                // - 조회 1회 = 1점
-                // - 최신도 = 최대 30점
-                long popularityScore = purchaseCount * 50 + viewCount + recencyScore;
-                
-                return new ProductWithScore(product, popularityScore);
-            })
-            .sorted((a, b) -> Long.compare(b.getScore(), a.getScore())) // 점수 높은 순
+        return products.stream()
             .limit(limit)
-            .map(productWithScore -> new ProductResponse(
-                productWithScore.getProduct().getId(),
-                productWithScore.getProduct().getTitle(),
-                productWithScore.getProduct().getPrice(),
-                productWithScore.getProduct().getCategory(),
-                productWithScore.getProduct().getImageUrl(),
-                productWithScore.getProduct().getStatus().toString(),
-                productWithScore.getProduct().getViewCount()
+            .map(product -> new ProductResponse(
+                product.getId(),
+                product.getTitle(),
+                product.getPrice(),
+                product.getCategory(),
+                product.getImageUrl(),
+                product.getStatus().toString(),
+                product.getViewCount()
+            ))
+            .collect(Collectors.toList());
+    }
+
+    public List<ProductResponse> getLatestProducts(int limit) {
+        // 최신순으로 정렬
+        List<Product> products = productRepository.findAvailableProductsOrderByCreatedAtDesc();
+        
+        return products.stream()
+            .limit(limit)
+            .map(product -> new ProductResponse(
+                product.getId(),
+                product.getTitle(),
+                product.getPrice(),
+                product.getCategory(),
+                product.getImageUrl(),
+                product.getStatus().toString(),
+                product.getViewCount()
             ))
             .collect(Collectors.toList());
     }

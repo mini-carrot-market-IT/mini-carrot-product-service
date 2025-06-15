@@ -375,6 +375,18 @@ public class ProductController {
                     .body(ApiResponse.error("상품 조회 중 오류가 발생했습니다: " + e.getMessage()));
         }
     }
+
+    @GetMapping("/latest")
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getLatestProducts(
+            @RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<ProductResponse> products = productService.getLatestProducts(limit);
+            return ResponseEntity.ok(ApiResponse.success(products));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("최신 상품 조회 중 오류가 발생했습니다: " + e.getMessage()));
+        }
+    }
 }
 
 @RestController
